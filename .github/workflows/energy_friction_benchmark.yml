@@ -1,0 +1,105 @@
+name: Energy Friction Paired Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      nonces:
+        description: Nonces per track
+        required: true
+        default: "3"
+      start_nonce:
+        description: First nonce
+        required: true
+        default: "0"
+      fuel:
+        description: Fuel cap per nonce
+        required: true
+        default: "5000000000000"
+  push:
+    branches:
+      - research/energy-arbitrage-friction
+    paths:
+      - .github/workflows/energy_friction_benchmark.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build legacy and corrected instrumented binaries
+        run: |
+          mkdir -p benchmark-bin
+          docker run --rm --user root \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ghcr.io/tig-foundation/tig-monorepo/energy_arbitrage/dev:0.0.7 \
+            bash -lc '
+              set -e
+              python3 scripts/set_legacy_energy_friction.py
+              build_so titan_v6
+              cp tig-algorithms/lib/energy_arbitrage/amd64/titan_v6.so benchmark-bin/titan_v6_legacy.so
+              git checkout -- tig-algorithms/src/energy_arbitrage/titan_v6/mod.rs
+              cargo clean
+              build_so titan_v6
+              cp tig-algorithms/lib/energy_arbitrage/amd64/titan_v6.so benchmark-bin/titan_v6_corrected.so
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: energy-friction-binaries
+          path: benchmark-bin/*.so
+          retention-days: 7
+
+  benchmark:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - track: T49
+            scenario: baseline
+          - track: T50
+            scenario: congested
+          - track: T51
+            scenario: multiday
+          - track: T52
+            scenario: dense
+          - track: T53
+            scenario: capstone
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: energy-friction-binaries
+          path: benchmark-bin
+
+      - name: Run paired instrumented benchmark
+        run: |
+          chmod +x scripts/run_energy_friction_pair.py
+          docker run --rm --user root \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            ghcr.io/tig-foundation/tig-monorepo/energy_arbitrage/dev:0.0.7 \
+            python3 scripts/run_energy_friction_pair.py \
+              --track ${{ matrix.track }} \
+              --scenario ${{ matrix.scenario }} \
+              --nonces ${{ inputs.nonces || '1' }} \
+              --start ${{ inputs.start_nonce || '0' }} \
+              --fuel ${{ inputs.fuel || '5000000000000' }} \
+              --legacy benchmark-bin/titan_v6_legacy.so \
+              --corrected benchmark-bin/titan_v6_corrected.so \
+              --output benchmark-results/${{ matrix.track }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: energy-friction-${{ matrix.track }}
+          path: benchmark-results/${{ matrix.track }}
+          retention-days: 30
