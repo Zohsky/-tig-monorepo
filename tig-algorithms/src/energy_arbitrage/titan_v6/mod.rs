@@ -14,14 +14,40 @@ pub mod t53_engine;
 /// threshold carries `kappa * (1 + eta_rt)`. Expressed per discharged MWh, the
 /// sell-side threshold carries `kappa * (1 + 1 / eta_rt)`.
 #[inline(always)]
-fn round_trip_transaction_friction(eta_rt: f64, kappa: f64) -> (f64, f64) {
+fn round_trip_transaction_friction(eta_rt: f64, kappa: f64, alpha: f64) -> (f64, f64) {
     debug_assert!(eta_rt > 0.0 && eta_rt <= 1.0);
+    debug_assert!((0.0..=1.0).contains(&alpha));
     #[cfg(test)]
     if std::env::var_os("TIG_BENCH_LEGACY_FRICTION").is_some() {
         return (2.0 * kappa, 2.0 * kappa);
     }
-    (kappa * (1.0 + eta_rt), kappa * (1.0 + 1.0 / eta_rt))
+    #[cfg(test)]
+    let alpha = std::env::var("TIG_BENCH_FRICTION_ALPHA")
+        .ok()
+        .and_then(|value| value.parse::<f64>().ok())
+        .map(|value| value.clamp(0.0, 1.0))
+        .unwrap_or(alpha);
+
+    let legacy = 2.0 * kappa;
+    let corrected_charge = kappa * (1.0 + eta_rt);
+    let corrected_discharge = kappa * (1.0 + 1.0 / eta_rt);
+    if alpha == 0.0 {
+        return (legacy, legacy);
+    }
+    if alpha == 1.0 {
+        return (corrected_charge, corrected_discharge);
+    }
+    (
+        legacy + alpha * (corrected_charge - legacy),
+        legacy + alpha * (corrected_discharge - legacy),
+    )
 }
+
+const T51_FRICTION_ALPHA: f64 = 1.0;
+// Dense dispatch is unusually threshold-sensitive. A five-nonce paired sweep
+// selected a conservative blend; see research/benchmarks/energy_arbitrage_friction_sweep.
+const T52_FRICTION_ALPHA: f64 = 0.25;
+const T53_FRICTION_ALPHA: f64 = 1.0;
 
 #[cfg(test)]
 mod tests {
@@ -31,15 +57,22 @@ mod tests {
 
     #[test]
     fn round_trip_friction_is_symmetric_only_at_unit_efficiency() {
-        let (charge, discharge) = round_trip_transaction_friction(1.0, 0.25);
+        let (charge, discharge) = round_trip_transaction_friction(1.0, 0.25, 1.0);
         assert_eq!(charge, 0.5);
         assert_eq!(discharge, 0.5);
 
-        let (charge, discharge) = round_trip_transaction_friction(0.81, 0.25);
+        let (charge, discharge) = round_trip_transaction_friction(0.81, 0.25, 1.0);
         assert!((charge - 0.4525).abs() < 1e-12);
         assert!((discharge - 0.558641975308642).abs() < 1e-12);
         assert!(charge < 0.5);
         assert!(discharge > 0.5);
+
+        let (charge, discharge) = round_trip_transaction_friction(0.81, 0.25, 0.0);
+        assert_eq!((charge, discharge), (0.5, 0.5));
+
+        let (charge, discharge) = round_trip_transaction_friction(0.81, 0.25, 0.5);
+        assert!((charge - 0.47625).abs() < 1e-12);
+        assert!((discharge - 0.529320987654321).abs() < 1e-12);
     }
 
     #[test]

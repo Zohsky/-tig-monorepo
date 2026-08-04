@@ -1,4 +1,4 @@
-use super::round_trip_transaction_friction;
+use super::{round_trip_transaction_friction, T51_FRICTION_ALPHA};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -618,7 +618,8 @@ fn build_battery_dp(
 
     let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
     // Round-trip transaction costs are asymmetric after efficiency losses.
-    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
+    let (charge_friction, discharge_friction) =
+        round_trip_transaction_friction(eta_rt, KAPPA_TX, T51_FRICTION_ALPHA);
 
     for t in (0..num_steps).rev() {
         let da = da_at_node[t];
@@ -738,7 +739,7 @@ fn scvc_greedy_trajectory(dp: &BatteryDP, battery: &Battery, da_at_node: &[f64])
         let (lo, hi) = compute_action_bounds(battery, soc);
         let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
         let (charge_friction, discharge_friction) =
-            round_trip_transaction_friction(eta_rt, KAPPA_TX);
+            round_trip_transaction_friction(eta_rt, KAPPA_TX, T51_FRICTION_ALPHA);
         let charge_max = da * eta_rt - charge_friction;
         let discharge_min = da / eta_rt + discharge_friction;
         // Fixed small grid (9 levels) for rollout: cheap, deterministic, sufficient resolution.
@@ -813,7 +814,8 @@ fn pick_dp_action(
     let mut best_value = dp_action_value(dp, battery, t, soc, price, best_action);
 
     let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
-    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
+    let (charge_friction, discharge_friction) =
+        round_trip_transaction_friction(eta_rt, KAPPA_TX, T51_FRICTION_ALPHA);
     let q_low = price;
     let q_high = price;
     let charge_max = q_high * eta_rt - charge_friction;
@@ -2062,7 +2064,7 @@ fn admm_consensus_polish(
 
             let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
             let (charge_friction, discharge_friction) =
-                round_trip_transaction_friction(eta_rt, KAPPA_TX);
+                round_trip_transaction_friction(eta_rt, KAPPA_TX, T51_FRICTION_ALPHA);
             let charge_max = price * eta_rt - charge_friction;
             let discharge_min = price / eta_rt + discharge_friction;
 
@@ -2140,7 +2142,8 @@ fn policy(
     let horizon = hp.lookahead_horizon.min(n_remaining);
     let mut target = vec![0.0_f64; challenge.num_batteries];
 
-    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
+    let (charge_friction, discharge_friction) =
+        round_trip_transaction_friction(eta_rt, KAPPA_TX, T51_FRICTION_ALPHA);
     let hours_left = (n_remaining as f64) * DELTA_T;
     let allow_charge = hours_left >= 1.5;
 

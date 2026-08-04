@@ -34,6 +34,10 @@ jobs:
       - name: Cargo Test
         run: >
           cargo test -p tig-utils --features web3
+      - name: Energy Arbitrage Tests
+        run: |
+          cargo test -p tig-algorithms --features energy_arbitrage
+          cargo test -p tig-challenges --features energy_arbitrage
       - name: Update Commit Status (Success)
         if: success()
         uses: myrotvorets/set-commit-status-action@master

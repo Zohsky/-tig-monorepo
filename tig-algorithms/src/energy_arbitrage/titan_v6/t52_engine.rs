@@ -1,5 +1,5 @@
 
-use super::round_trip_transaction_friction;
+use super::{round_trip_transaction_friction, T52_FRICTION_ALPHA};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -568,7 +568,8 @@ fn build_battery_dp(
 
     let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
     // Round-trip transaction costs are asymmetric after efficiency losses.
-    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
+    let (charge_friction, discharge_friction) =
+        round_trip_transaction_friction(eta_rt, KAPPA_TX, T52_FRICTION_ALPHA);
 
     for t in (0..num_steps).rev() {
         let da = da_at_node[t];
@@ -689,7 +690,8 @@ fn build_aggregate_dp(
     let w_jump_low = w_jump - w_jump_high;
 
     let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
-    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
+    let (charge_friction, discharge_friction) =
+        round_trip_transaction_friction(eta_rt, KAPPA_TX, T52_FRICTION_ALPHA);
 
     let mut values = vec![vec![0.0; levels]; num_steps + 1];
 
@@ -823,7 +825,8 @@ fn pick_dp_action(
     let mut best_value = dp_action_value(dp, battery, t, soc, price, best_action);
 
     let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
-    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
+    let (charge_friction, discharge_friction) =
+        round_trip_transaction_friction(eta_rt, KAPPA_TX, T52_FRICTION_ALPHA);
     let q_low = price;
     let q_high = price;
     let charge_max = q_high * eta_rt - charge_friction;
@@ -1609,7 +1612,8 @@ fn policy(
     let horizon = hp.lookahead_horizon.min(n_remaining);
     let mut target = vec![0.0_f64; challenge.num_batteries];
 
-    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
+    let (charge_friction, discharge_friction) =
+        round_trip_transaction_friction(eta_rt, KAPPA_TX, T52_FRICTION_ALPHA);
     let hours_left = (n_remaining as f64) * DELTA_T;
     let allow_charge = hours_left >= 1.5;
 
