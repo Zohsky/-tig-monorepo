@@ -40,10 +40,11 @@ jobs:
             ghcr.io/tig-foundation/tig-monorepo/energy_arbitrage/dev:0.0.7 \
             bash -lc '
               set -e
+              cp tig-algorithms/src/energy_arbitrage/titan_v6/mod.rs benchmark-bin/titan_v6_corrected.rs
               python3 scripts/set_legacy_energy_friction.py
               build_so titan_v6
               cp tig-algorithms/lib/energy_arbitrage/amd64/titan_v6.so benchmark-bin/titan_v6_legacy.so
-              git checkout -- tig-algorithms/src/energy_arbitrage/titan_v6/mod.rs
+              cp benchmark-bin/titan_v6_corrected.rs tig-algorithms/src/energy_arbitrage/titan_v6/mod.rs
               cargo clean
               build_so titan_v6
               cp tig-algorithms/lib/energy_arbitrage/amd64/titan_v6.so benchmark-bin/titan_v6_corrected.so
