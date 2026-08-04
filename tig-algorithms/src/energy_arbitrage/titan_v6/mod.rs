@@ -8,6 +8,86 @@ pub mod t51_engine;
 pub mod t52_engine;
 pub mod t53_engine;
 
+/// Transaction-cost wedges for a complete charge/discharge cycle.
+///
+/// A MWh bought for charging yields `eta_rt` MWh at discharge, so the buy-side
+/// threshold carries `kappa * (1 + eta_rt)`. Expressed per discharged MWh, the
+/// sell-side threshold carries `kappa * (1 + 1 / eta_rt)`.
+#[inline(always)]
+fn round_trip_transaction_friction(eta_rt: f64, kappa: f64) -> (f64, f64) {
+    debug_assert!(eta_rt > 0.0 && eta_rt <= 1.0);
+    #[cfg(test)]
+    if std::env::var_os("TIG_BENCH_LEGACY_FRICTION").is_some() {
+        return (2.0 * kappa, 2.0 * kappa);
+    }
+    (kappa * (1.0 + eta_rt), kappa * (1.0 + 1.0 / eta_rt))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::round_trip_transaction_friction;
+    use super::*;
+    use std::sync::Mutex;
+
+    #[test]
+    fn round_trip_friction_is_symmetric_only_at_unit_efficiency() {
+        let (charge, discharge) = round_trip_transaction_friction(1.0, 0.25);
+        assert_eq!(charge, 0.5);
+        assert_eq!(discharge, 0.5);
+
+        let (charge, discharge) = round_trip_transaction_friction(0.81, 0.25);
+        assert!((charge - 0.4525).abs() < 1e-12);
+        assert!((discharge - 0.558641975308642).abs() < 1e-12);
+        assert!(charge < 0.5);
+        assert!(discharge > 0.5);
+    }
+
+    #[test]
+    #[ignore = "paired benchmark harness; run explicitly with TIG_BENCH_* variables"]
+    fn paired_benchmark_case() {
+        let scenario = match std::env::var("TIG_BENCH_TRACK").unwrap().as_str() {
+            "T49" => Scenario::BASELINE,
+            "T50" => Scenario::CONGESTED,
+            "T51" => Scenario::MULTIDAY,
+            "T52" => Scenario::DENSE,
+            "T53" => Scenario::CAPSTONE,
+            track => panic!("unsupported TIG_BENCH_TRACK={track}"),
+        };
+        let nonce: u64 = std::env::var("TIG_BENCH_NONCE")
+            .unwrap()
+            .parse()
+            .unwrap();
+        let mut seed = [0_u8; 32];
+        for (i, byte) in seed.iter_mut().enumerate() {
+            *byte = (nonce as u8).wrapping_add((i as u8).wrapping_mul(37));
+        }
+        let challenge = Challenge::generate_instance(&seed, &Track { s: scenario }).unwrap();
+        let saved = Mutex::new(None::<Solution>);
+        let started = std::time::Instant::now();
+        solve_challenge(
+            &challenge,
+            &|solution| {
+                *saved.lock().unwrap() = Some(solution.clone());
+                Ok(())
+            },
+            &None,
+        )
+        .unwrap();
+        let elapsed = started.elapsed();
+        let solution = saved.into_inner().unwrap().expect("solver saved no solution");
+        let output = std::env::var("TIG_BENCH_OUTPUT").unwrap();
+        std::fs::write(&output, serde_json::to_vec(&solution).unwrap()).unwrap();
+        println!(
+            "paired_case track={} nonce={} elapsed_ms={} steps={} output={}",
+            std::env::var("TIG_BENCH_TRACK").unwrap(),
+            nonce,
+            elapsed.as_millis(),
+            solution.schedule.len(),
+            output,
+        );
+    }
+}
+
 fn merge_hp(user_hp: &Option<Map<String, Value>>, defaults: Vec<(&str, Value)>) -> Option<Map<String, Value>> {
     let mut m = user_hp.clone().unwrap_or_default();
     for (k, v) in defaults {

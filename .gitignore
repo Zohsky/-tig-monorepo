@@ -17,3 +17,8 @@ __pycache__/
 db_data/
 
 .DS_Store
+
+# Local comparison corpus: complete third-party/nested Git repositories are
+# retained on the research machine, while reproducible reports and benchmark
+# outputs under research/ remain versioned.
+research/reference_algorithms/

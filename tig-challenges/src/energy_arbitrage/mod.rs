@@ -1,3 +1,4 @@
+#[cfg_attr(feature = "hide_verification", allow(dead_code))]
 mod baselines;
 mod battery;
 pub use battery::*;
@@ -12,14 +13,10 @@ mod utils;
 
 use crate::QUALITY_PRECISION;
 use anyhow::{anyhow, Result};
-use battery::*;
-use market::*;
-use network::*;
 use rand::{
     rngs::{SmallRng, StdRng},
     Rng, SeedableRng,
 };
-use scenarios::*;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -222,6 +219,9 @@ impl Challenge {
             ));
         }
         for (i, (&a, bounds)) in action.iter().zip(state.action_bounds.iter()).enumerate() {
+            if !a.is_finite() {
+                return Err(anyhow!("Action ({}) on battery {} is not finite", a, i));
+            }
             if a < bounds.0 || a > bounds.1 {
                 return Err(anyhow!(
                     "Action ({}) on battery {} is out of bounds ({}, {})",
@@ -428,6 +428,99 @@ mod tests {
     }
 
     #[test]
+    fn energy_arbitrage_rejects_non_finite_actions() {
+        let challenge = Challenge::generate_instance(
+            &[7_u8; 32],
+            &Track {
+                s: Scenario::BASELINE,
+            },
+        )
+        .unwrap();
+        let mut rng = SmallRng::from_seed([9_u8; 32]);
+        let state = challenge.initial_state(&mut rng);
+        let mut action = vec![0.0; challenge.num_batteries];
+
+        action[0] = f64::NAN;
+        assert!(challenge
+            .take_step(
+                &state,
+                &action,
+                NextRTPrices::Override(vec![0.0; challenge.network.num_nodes]),
+            )
+            .is_err());
+
+        action[0] = f64::INFINITY;
+        assert!(challenge
+            .take_step(
+                &state,
+                &action,
+                NextRTPrices::Override(vec![0.0; challenge.network.num_nodes]),
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn energy_arbitrage_rejects_non_finite_or_malformed_flows() {
+        let challenge = Challenge::generate_instance(
+            &[11_u8; 32],
+            &Track {
+                s: Scenario::BASELINE,
+            },
+        )
+        .unwrap();
+        let mut flows = vec![0.0; challenge.network.num_lines];
+
+        flows[0] = f64::NAN;
+        assert!(challenge.network.verify_flows(&flows).is_err());
+        flows[0] = f64::INFINITY;
+        assert!(challenge.network.verify_flows(&flows).is_err());
+        assert!(challenge
+            .network
+            .verify_flows(&flows[..flows.len() - 1])
+            .is_err());
+    }
+
+    #[test]
+    #[ignore = "paired benchmark evaluator; run explicitly with TIG_BENCH_* variables"]
+    fn paired_benchmark_evaluate_solution() {
+        let scenario = match std::env::var("TIG_BENCH_TRACK").unwrap().as_str() {
+            "T49" => Scenario::BASELINE,
+            "T50" => Scenario::CONGESTED,
+            "T51" => Scenario::MULTIDAY,
+            "T52" => Scenario::DENSE,
+            "T53" => Scenario::CAPSTONE,
+            track => panic!("unsupported TIG_BENCH_TRACK={track}"),
+        };
+        let nonce: u64 = std::env::var("TIG_BENCH_NONCE")
+            .unwrap()
+            .parse()
+            .unwrap();
+        let mut seed = [0_u8; 32];
+        for (i, byte) in seed.iter_mut().enumerate() {
+            *byte = (nonce as u8).wrapping_add((i as u8).wrapping_mul(37));
+        }
+        let challenge = Challenge::generate_instance(&seed, &Track { s: scenario }).unwrap();
+        let input = std::env::var("TIG_BENCH_SOLUTION").unwrap();
+        let solution: Solution = serde_json::from_slice(&std::fs::read(input).unwrap()).unwrap();
+        let profit = challenge.evaluate_total_profit(&solution).unwrap();
+        let quality = challenge.evaluate_solution(&solution).unwrap();
+        let (_, baseline_profit) = challenge.compute_baseline().unwrap();
+        let output = serde_json::json!({
+            "track": std::env::var("TIG_BENCH_TRACK").unwrap(),
+            "nonce": nonce,
+            "profit": profit,
+            "baseline_profit": baseline_profit,
+            "quality": quality,
+            "schedule": solution.schedule,
+        });
+        std::fs::write(
+            std::env::var("TIG_BENCH_EVAL_OUTPUT").unwrap(),
+            serde_json::to_vec_pretty(&output).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn test_greedy_baseline() {
         for challenge in challenge_iter() {
             let result = challenge.compute_baseline();
@@ -461,7 +554,7 @@ mod tests {
                 let challenge = Challenge::generate_instance(&seed, &Track { s: *scenario }).unwrap();
 
                 let start = std::time::Instant::now();
-                let (greedy_sched, greedy_state) = challenge.simulate(&baselines::greedy::policy).unwrap();
+                let (_greedy_sched, greedy_state) = challenge.simulate(&baselines::greedy::policy).unwrap();
                 let (_, conservative_state) = challenge.simulate(&baselines::conservative::policy).unwrap();
                 total_ms += start.elapsed().as_millis() as u64;
 

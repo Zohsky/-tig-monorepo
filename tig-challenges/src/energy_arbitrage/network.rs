@@ -296,7 +296,17 @@ impl Network {
 
     /// Verify that the flows are within the flow limits
     pub fn verify_flows(&self, flows: &[f64]) -> Result<()> {
+        if flows.len() != self.num_lines {
+            return Err(anyhow!(
+                "Flow count ({}) does not match number of lines ({})",
+                flows.len(),
+                self.num_lines
+            ));
+        }
         for (l, &flow) in flows.iter().enumerate() {
+            if !flow.is_finite() {
+                return Err(anyhow!("Line {} flow is not finite: {}", l, flow));
+            }
             let violation = flow.abs() - self.flow_limits[l];
             if violation > constants::EPS_FLOW * self.flow_limits[l] {
                 return Err(anyhow!(

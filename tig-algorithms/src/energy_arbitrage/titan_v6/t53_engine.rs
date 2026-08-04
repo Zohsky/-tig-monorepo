@@ -1,4 +1,4 @@
-
+use super::round_trip_transaction_friction;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -820,7 +820,8 @@ fn build_battery_dp(
     let w_jump_low = w_jump - w_jump_high;
 
     let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
-    let friction = 2.0 * KAPPA_TX;
+    // Round-trip transaction costs are asymmetric after efficiency losses.
+    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
 
     for t in (0..num_steps).rev() {
         let da = da_at_node[t];
@@ -831,8 +832,8 @@ fn build_battery_dp(
 
         let q_low = price_low;
         let q_high = price_high;
-        let charge_max = q_high * eta_rt - friction;
-        let discharge_min = q_low / eta_rt + friction;
+        let charge_max = q_high * eta_rt - charge_friction;
+        let discharge_min = q_low / eta_rt + discharge_friction;
 
         let (left, right) = values.split_at_mut(t + 1);
         let current = &mut left[t];
@@ -981,7 +982,7 @@ fn build_aggregate_dp(
     let w_jump_low = w_jump - w_jump_high;
 
     let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
-    let friction = 2.0 * KAPPA_TX;
+    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
 
     let mut values = vec![vec![0.0; levels]; num_steps + 1];
 
@@ -992,8 +993,8 @@ fn build_aggregate_dp(
         let price_jump_low = da * (1.0 + jump_floor);
         let price_jump_high = da * (1.0 + jump_ceiling);
 
-        let charge_max_low = price_low * eta_rt - friction;
-        let discharge_min_low = price_low / eta_rt + friction;
+        let charge_max_low = price_low * eta_rt - charge_friction;
+        let discharge_min_low = price_low / eta_rt + discharge_friction;
 
         let (left, right) = values.split_at_mut(t + 1);
         let current = &mut left[t];
@@ -1115,9 +1116,9 @@ fn pick_dp_action(
     let mut best_value = dp_action_value(dp, battery, t, soc, price, best_action);
 
     let eta_rt = ETA_CHARGE * ETA_DISCHARGE;
-    let friction = 2.0 * KAPPA_TX;
-    let charge_max = price * eta_rt - friction;
-    let discharge_min = price / eta_rt + friction;
+    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
+    let charge_max = price * eta_rt - charge_friction;
+    let discharge_min = price / eta_rt + discharge_friction;
 
     for raw in adaptive_action_grid(battery, charge_max, discharge_min, price, hp.policy_action_levels) {
         let action = raw.clamp(lo, hi);
@@ -2061,7 +2062,7 @@ fn policy(
     let horizon = hp.lookahead_horizon.min(n_remaining);
     let mut target = vec![0.0_f64; challenge.num_batteries];
 
-    let friction = 2.0 * KAPPA_TX;
+    let (charge_friction, discharge_friction) = round_trip_transaction_friction(eta_rt, KAPPA_TX);
     let hours_left = (n_remaining as f64) * DELTA_T;
     let allow_charge = hours_left >= 1.5;
 
@@ -2124,8 +2125,8 @@ fn policy(
         let q_high = future[q_high_idx];
         let price_band = (q_high - q_low).abs();
 
-        let charge_max = q_high * eta_rt - friction;
-        let discharge_min = q_low / eta_rt + friction;
+        let charge_max = q_high * eta_rt - charge_friction;
+        let discharge_min = q_low / eta_rt + discharge_friction;
 
         let discharge_steps_to_min = if u_max > EPS {
             let withdrawable_mwh = (state.socs[b] - battery.soc_min_mwh).max(0.0);
@@ -2142,8 +2143,10 @@ fn policy(
             && rank_frac <= 0.55
             && current_price > KAPPA_TX;
 
+        let terminal_discharge_break_even =
+            KAPPA_TX + KAPPA_DEG * u_max * DELTA_T / (battery.capacity_mwh * battery.capacity_mwh);
         let mut a = 0.0_f64;
-        if terminal_drain && u_max > 0.0 && current_price > friction {
+        if terminal_drain && u_max > 0.0 && current_price > terminal_discharge_break_even {
             a = u_max;
         } else if early_terminal_drain {
             let urgency = (1.0 - n_remaining as f64 / 48.0).clamp(0.0, 1.0);
@@ -2155,22 +2158,30 @@ fn policy(
         } else if u_max > 0.0 && current_price > discharge_min {
             let fraction = edge_sized_fraction(current_price - discharge_min, price_band);
             a = u_max * fraction;
-        } else if allow_charge && u_min < 0.0 && current_price < charge_max {
+        }
+        let terminal_charge_break_even = -KAPPA_TX
+            - KAPPA_DEG * (-u_min) * DELTA_T / (battery.capacity_mwh * battery.capacity_mwh);
+        let can_charge =
+            allow_charge || (u_min < 0.0 && current_price < terminal_charge_break_even);
+
+        if a == 0.0 && can_charge && u_min < 0.0 && current_price < charge_max {
             let fraction = edge_sized_fraction(charge_max - current_price, price_band);
             a = u_min * fraction;
         }
 
         if let Some((rt_low, rt_high)) = rt_bands[node] {
             let rt_band = (rt_high - rt_low).max(price_band).max(5.0);
-            if u_max > 0.0 && current_price > rt_high + friction {
-                let fraction = edge_sized_fraction(current_price - rt_high - friction, rt_band);
+            if u_max > 0.0 && current_price > rt_high + discharge_friction {
+                let fraction =
+                    edge_sized_fraction(current_price - rt_high - discharge_friction, rt_band);
                 let spike_action = u_max * fraction;
                 if spike_action.abs() > a.abs() || a < 0.0 {
                     a = spike_action;
                 }
-            } else if allow_charge && u_min < 0.0 && current_price < rt_low * eta_rt - friction {
+            } else if can_charge && u_min < 0.0 && current_price < rt_low * eta_rt - charge_friction
+            {
                 let fraction =
-                    edge_sized_fraction(rt_low * eta_rt - friction - current_price, rt_band);
+                    edge_sized_fraction(rt_low * eta_rt - charge_friction - current_price, rt_band);
                 let dip_action = u_min * fraction;
                 if dip_action.abs() > a.abs() || a > 0.0 {
                     a = dip_action;
@@ -2203,9 +2214,9 @@ fn policy(
             let pivot_amp = thr <= 0.0 || a.abs() >= thr;
             let pivot_rt = hp.mpc_use_rt_gate
                 && rt_bands[node].map_or(false, |(rt_low, rt_high)| {
-                    (u_max > EPS && current_price > rt_high + friction)
-                        || (allow_charge && u_min < -EPS
-                            && current_price < rt_low * eta_rt - friction)
+                    (u_max > EPS && current_price > rt_high + discharge_friction)
+                        || (can_charge && u_min < -EPS
+                            && current_price < rt_low * eta_rt - charge_friction)
                 });
             if pivot_amp || pivot_rt {
                 let n = hp.mpc_n_cand;

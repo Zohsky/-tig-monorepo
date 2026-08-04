@@ -1,7 +1,38 @@
 use anyhow::Result;
 use clap::{arg, Command};
+#[cfg(any(
+    feature = "c001",
+    feature = "c002",
+    feature = "c003",
+    feature = "c004",
+    feature = "c005",
+    feature = "c006",
+    feature = "c007",
+    feature = "c008"
+))]
 use serde_json::{Map, Value};
-use std::{fs, io::Read, panic, path::PathBuf};
+#[cfg(any(
+    feature = "c001",
+    feature = "c002",
+    feature = "c003",
+    feature = "c004",
+    feature = "c005",
+    feature = "c006",
+    feature = "c007",
+    feature = "c008"
+))]
+use std::io::Read;
+use std::{fs, path::PathBuf};
+#[cfg(any(
+    feature = "c001",
+    feature = "c002",
+    feature = "c003",
+    feature = "c004",
+    feature = "c005",
+    feature = "c006",
+    feature = "c007",
+    feature = "c008"
+))]
 use tig_challenges::*;
 use tig_structs::core::BenchmarkSettings;
 use tig_utils::dejsonify;
@@ -60,8 +91,20 @@ pub fn verify_solution(
     let settings = load_settings(&settings);
     let seed = settings.calc_seed(&rand_hash, nonce);
 
+    #[allow(unused_mut)] // Mutated by feature-specific dispatch expansions.
     let mut err_msg = Option::<String>::None;
+    // These values are consumed by feature-specific macro expansions. Keep the
+    // featureless CLI build warning-free while still returning a useful error.
+    let _ = (
+        &seed,
+        &solution_path,
+        &ptx_path,
+        &gpu_device,
+        verbose,
+        &err_msg,
+    );
 
+    #[allow(unused_macros)]
     macro_rules! dispatch_challenge {
         ($c:ident, cpu) => {{
             let track_id = if settings.track_id.starts_with('"') && settings.track_id.ends_with('"')
@@ -175,54 +218,113 @@ pub fn verify_solution(
     match settings.challenge_id.as_str() {
         "c001" => {
             #[cfg(not(feature = "c001"))]
-            panic!("tig-verifier was not compiled with '--features c001'");
+            {
+                Err(anyhow::anyhow!(
+                    "tig-verifier was not compiled with '--features c001'"
+                ))
+            }
             #[cfg(feature = "c001")]
-            dispatch_challenge!(c001, cpu)
+            {
+                dispatch_challenge!(c001, cpu);
+                Ok(())
+            }
         }
         "c002" => {
             #[cfg(not(feature = "c002"))]
-            panic!("tig-verifier was not compiled with '--features c002'");
+            {
+                Err(anyhow::anyhow!(
+                    "tig-verifier was not compiled with '--features c002'"
+                ))
+            }
             #[cfg(feature = "c002")]
-            dispatch_challenge!(c002, cpu)
+            {
+                dispatch_challenge!(c002, cpu);
+                Ok(())
+            }
         }
         "c003" => {
             #[cfg(not(feature = "c003"))]
-            panic!("tig-verifier was not compiled with '--features c003'");
+            {
+                Err(anyhow::anyhow!(
+                    "tig-verifier was not compiled with '--features c003'"
+                ))
+            }
             #[cfg(feature = "c003")]
-            dispatch_challenge!(c003, cpu)
+            {
+                dispatch_challenge!(c003, cpu);
+                Ok(())
+            }
         }
         "c004" => {
             #[cfg(not(feature = "c004"))]
-            panic!("tig-verifier was not compiled with '--features c004'");
+            {
+                Err(anyhow::anyhow!(
+                    "tig-verifier was not compiled with '--features c004'"
+                ))
+            }
             #[cfg(feature = "c004")]
-            dispatch_challenge!(c004, gpu)
+            {
+                dispatch_challenge!(c004, gpu);
+                Ok(())
+            }
         }
         "c005" => {
             #[cfg(not(feature = "c005"))]
-            panic!("tig-verifier was not compiled with '--features c005'");
+            {
+                Err(anyhow::anyhow!(
+                    "tig-verifier was not compiled with '--features c005'"
+                ))
+            }
             #[cfg(feature = "c005")]
-            dispatch_challenge!(c005, gpu)
+            {
+                dispatch_challenge!(c005, gpu);
+                Ok(())
+            }
         }
         "c006" => {
             #[cfg(not(feature = "c006"))]
-            panic!("tig-verifier was not compiled with '--features c006'");
+            {
+                Err(anyhow::anyhow!(
+                    "tig-verifier was not compiled with '--features c006'"
+                ))
+            }
             #[cfg(feature = "c006")]
-            dispatch_challenge!(c006, gpu)
+            {
+                dispatch_challenge!(c006, gpu);
+                Ok(())
+            }
         }
         "c007" => {
             #[cfg(not(feature = "c007"))]
-            panic!("tig-verifier was not compiled with '--features c007'");
+            {
+                Err(anyhow::anyhow!(
+                    "tig-verifier was not compiled with '--features c007'"
+                ))
+            }
             #[cfg(feature = "c007")]
-            dispatch_challenge!(c007, cpu)
+            {
+                dispatch_challenge!(c007, cpu);
+                Ok(())
+            }
         }
         "c008" => {
             #[cfg(not(feature = "c008"))]
-            panic!("tig-verifier was not compiled with '--features c008'");
+            {
+                Err(anyhow::anyhow!(
+                    "tig-verifier was not compiled with '--features c008'"
+                ))
+            }
             #[cfg(feature = "c008")]
-            dispatch_challenge!(c008, cpu)
+            {
+                dispatch_challenge!(c008, cpu);
+                Ok(())
+            }
         }
-        _ => panic!("Unsupported challenge"),
-    }
+        _ => Err(anyhow::anyhow!(
+            "Unsupported challenge: {}",
+            settings.challenge_id
+        )),
+    }?;
 
     if let Some(err_msg) = err_msg {
         eprintln!("Verification error: {}", err_msg);
@@ -248,6 +350,16 @@ fn load_settings(settings: &str) -> BenchmarkSettings {
     })
 }
 
+#[cfg(any(
+    feature = "c001",
+    feature = "c002",
+    feature = "c003",
+    feature = "c004",
+    feature = "c005",
+    feature = "c006",
+    feature = "c007",
+    feature = "c008"
+))]
 fn load_solution(solution: &str) -> String {
     if solution == "-" {
         let mut buffer = String::new();

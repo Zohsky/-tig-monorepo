@@ -651,8 +651,6 @@ mod helpers {
         deg_coeff: f64,
     ) -> f64 {
         let dt = 0.25_f64;
-        let cap = bat.capacity_mwh.max(1e-9);
-
         // Compute lambda (dV/dSOC) at current SOC for future-value linearisation
         let lambda = if soc_levels > 1 {
             let idx_f = (soc - bat.soc_min_mwh) / soc_span * ((soc_levels - 1) as f64);
@@ -771,7 +769,7 @@ mod helpers {
                 let b_d = dt * (p_da - 0.25 - lambda / eff_d);
                 let cand = (b_d / (2.0 * deg_coeff)).clamp(u_lo, u_max);
                 let v = eval_u(cand); if v > best_v { best_v = v; best_u = cand; }
-                let v = eval_u(u_max); if v > best_v { best_v = v; best_u = u_max; }
+                let v = eval_u(u_max); if v > best_v { best_u = u_max; }
             }
         }
         best_u
@@ -2109,7 +2107,7 @@ mod helpers {
                             let proba = ((ratio - hp.lmp_threshold) / (1.0 - hp.lmp_threshold).max(1e-6)).clamp(0.0, 1.0);
                             let premium = base_prem * proba;
                             let sign_f = f_exo.get(l).copied().unwrap_or(0.0).signum();
-                            for &(b, impact) in ca.ptdf_sparse.get(l).map(|v| v.as_slice()).unwrap_or(&[]) {
+                            for &(_b, impact) in ca.ptdf_sparse.get(l).map(|v| v.as_slice()).unwrap_or(&[]) {
                                 if impact.abs() > 1e-6 {
                                     premiums[t] += -impact * sign_f * premium / num_b.max(1) as f64;
                                 }
@@ -2250,6 +2248,7 @@ mod helpers {
         actions
     }
 }
+#[allow(dead_code)]
 mod lp {
     // Minimal dense simplex LP solver for joint battery dispatch.
     // Solves: maximize c^T x, s.t. A x <= b, x >= 0.

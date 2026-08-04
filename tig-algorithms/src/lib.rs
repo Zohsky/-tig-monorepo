@@ -6,10 +6,17 @@ pub fn seeded_hasher(seed: &[u8; 32]) -> RandomState {
     let seed4 = u64::from_be_bytes(seed[24..32].try_into().unwrap());
     RandomState::with_seeds(seed1, seed2, seed3, seed4)
 }
+#[cfg(any(feature = "c001", feature = "c007"))]
 pub(crate) type HashMap<K, V> = std::collections::HashMap<K, V, RandomState>;
+#[cfg(feature = "c001")]
 pub(crate) type HashSet<T> = std::collections::HashSet<T, RandomState>;
 
 pub const BUILD_TIME_PATH: &str = env!("CARGO_MANIFEST_DIR");
+
+// Native unit-test harnesses do not pass through TIG's LLVM fuel injector.
+#[cfg(all(test, feature = "c008"))]
+#[no_mangle]
+pub static mut __fuel_remaining: u64 = u64::MAX;
 
 #[cfg(feature = "c001")]
 pub mod satisfiability;

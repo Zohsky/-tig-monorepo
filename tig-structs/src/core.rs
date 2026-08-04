@@ -426,6 +426,9 @@ serializable_struct_with_getters! {
 }
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+// AWS product names are external identifiers, not ordinary Rust words. Keeping
+// them verbatim preserves the public API and its serialized representation.
+#[allow(non_camel_case_types)]
 pub enum ComputeType {
     AWS_T3,
     AWS_T3a,

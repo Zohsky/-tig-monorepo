@@ -2,10 +2,45 @@ use anyhow::{anyhow, Result};
 use serde_json::{Map, Value};
 use tig_challenges::energy_arbitrage::*;
 
+#[allow(
+    dead_code,
+    unused_variables,
+    unused_assignments,
+    unused_mut,
+    non_snake_case
+)]
 mod sub_t49;
+#[allow(
+    dead_code,
+    unused_variables,
+    unused_assignments,
+    unused_mut,
+    non_snake_case
+)]
 mod sub_t50;
+#[allow(
+    dead_code,
+    unused_variables,
+    unused_assignments,
+    unused_mut,
+    non_snake_case
+)]
 mod sub_t51;
+#[allow(
+    dead_code,
+    unused_variables,
+    unused_assignments,
+    unused_mut,
+    non_snake_case
+)]
 mod sub_t52;
+#[allow(
+    dead_code,
+    unused_variables,
+    unused_assignments,
+    unused_mut,
+    non_snake_case
+)]
 mod sub_t53;
 
 pub fn solve_challenge(

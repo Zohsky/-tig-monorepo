@@ -1,17 +1,49 @@
 pub const BUILD_TIME_PATH: &str = env!("CARGO_MANIFEST_DIR");
 
+#[cfg(any(
+    feature = "c001",
+    feature = "c002",
+    feature = "c003",
+    feature = "c004",
+    feature = "c005",
+    feature = "c006",
+    feature = "c007",
+    feature = "c008"
+))]
+#[cfg_attr(feature = "hide_verification", allow(dead_code))]
 const QUALITY_PRECISION: i32 = 1_000_000;
 
+#[cfg(any(
+    feature = "c001",
+    feature = "c002",
+    feature = "c003",
+    feature = "c004",
+    feature = "c005",
+    feature = "c006",
+    feature = "c007",
+    feature = "c008"
+))]
 macro_rules! conditional_pub {
     (fn $name:ident $($rest:tt)*) => {
         #[cfg(not(feature = "hide_verification"))]
         pub fn $name $($rest)*
 
         #[cfg(feature = "hide_verification")]
+        #[allow(dead_code)]
         fn $name $($rest)*
     };
 }
 
+#[cfg(any(
+    feature = "c001",
+    feature = "c002",
+    feature = "c003",
+    feature = "c004",
+    feature = "c005",
+    feature = "c006",
+    feature = "c007",
+    feature = "c008"
+))]
 macro_rules! impl_kv_string_serde {
     ($name:ident { $( $field:ident : $ty:ty ),* $(,)? }) => {
         paste::paste! {
@@ -86,6 +118,16 @@ macro_rules! impl_kv_string_serde {
     };
 }
 
+#[cfg(any(
+    feature = "c001",
+    feature = "c002",
+    feature = "c003",
+    feature = "c004",
+    feature = "c005",
+    feature = "c006",
+    feature = "c007",
+    feature = "c008"
+))]
 macro_rules! impl_base64_serde {
     ($name:ident { $( $field:ident : $ty:ty ),* $(,)? }) => {
         paste::paste! {

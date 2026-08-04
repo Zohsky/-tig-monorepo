@@ -1760,7 +1760,6 @@ mod helpers {
                             .map(|b| eval_profit(challenge, state, ca, b, actions_ref[b]))
                             .sum();
                         if obj_ref > best_obj + 1e-9 {
-                            best_obj = obj_ref;
                             best_actions = Some(actions_ref);
                         }
                     }

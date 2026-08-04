@@ -427,8 +427,6 @@ mod helpers {
         deg_coeff: f64,
     ) -> f64 {
         let dt = 0.25_f64;
-        let cap = bat.capacity_mwh.max(1e-9);
-
         // Compute lambda (dV/dSOC) at current SOC for future-value linearisation
         let lambda = if soc_levels > 1 {
             let idx_f = (soc - bat.soc_min_mwh) / soc_span * ((soc_levels - 1) as f64);
@@ -1341,6 +1339,7 @@ mod helpers {
         (best_u, best_f)
     }
 }
+#[allow(dead_code)]
 mod lp {
     // Minimal dense simplex LP solver for joint battery dispatch.
     // Solves: maximize c^T x, s.t. A x <= b, x >= 0.
